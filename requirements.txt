@@ -1,0 +1,25 @@
+# House Price Prediction System - Requirements.txt
+# Install all required packages using: pip install -r requirements.txt
+
+# Data manipulation and analysis
+pandas
+numpy
+
+# Data visualization
+matplotlib
+seaborn
+plotly
+
+# Machine learning
+scikit-learn
+joblib
+
+# Web application
+streamlit
+
+# Jupyter notebook support
+notebook
+ipykernel
+
+# Additional utilities
+openpyxl
