@@ -1,5 +1,8 @@
 # House Price Prediction System
 
+[![CI](https://github.com/Pravinraje0761/HOUSE-RATE-PREDICTIONS/actions/workflows/ci.yml/badge.svg)](https://github.com/Pravinraje0761/HOUSE-RATE-PREDICTIONS/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A complete end-to-end Machine Learning project for predicting house prices using regression algorithms.
 
 ## 📋 Project Overview
@@ -164,9 +167,10 @@ House_Price_Prediction/
 - Python 3.8 or higher
 - pip (Python package manager)
 
-### Step 1: Clone/Download the Project
+### Step 1: Clone the Project
 ```bash
-cd House_Price_Prediction
+git clone https://github.com/Pravinraje0761/HOUSE-RATE-PREDICTIONS.git
+cd HOUSE-RATE-PREDICTIONS
 ```
 
 ### Step 2: Create Virtual Environment (Recommended)
@@ -190,10 +194,13 @@ python generate_dataset.py
 cd ..
 ```
 
-### Step 5: Run Jupyter Notebook
+### Step 5: Train the Model
 ```bash
-jupyter notebook notebooks/House_Price_Prediction.ipynb
+python train.py      # trains and compares three models, saves the best to models/
 ```
+
+The notebook (`notebooks/House_Price_Prediction.ipynb`) walks through the same analysis
+step by step with plots; run `train.py` first, since its prediction examples use the saved model.
 
 ### Step 6: Run Streamlit App
 ```bash
@@ -202,30 +209,43 @@ streamlit run app.py
 
 ## 📈 Results
 
-### Model Performance Comparison
+Measured by `python train.py` (80/20 split, seed 42; 5-fold CV on the training split). All
+preprocessing is fitted on the training split only.
 
-| Model | R² Score | MAE ($) | RMSE ($) |
-|-------|---------|---------|----------|
-| Linear Regression | 0.85 | 45,000 | 65,000 |
-| Decision Tree | 0.92 | 32,000 | 48,000 |
-| Random Forest | **0.95** | **28,000** | **42,000** |
+| Model | Test R² | MAE ($) | RMSE ($) | CV R² |
+|-------|--------:|--------:|---------:|------:|
+| Linear Regression | 0.866 | 67,296 | 87,092 | 0.864 ± 0.018 |
+| Decision Tree | 0.683 | 100,779 | 133,792 | 0.662 ± 0.018 |
+| Random Forest | 0.847 | 71,641 | 92,877 | 0.840 ± 0.019 |
 
-### Best Model: Random Forest Regressor
-- **R² Score**: 0.95+
-- **Mean Absolute Error**: ~$28,000
-- **Root Mean Squared Error**: ~$42,000
-- **Most Important Feature**: Area (Square Feet)
+**Linear regression is selected** (best cross-validated R²), explaining about 87% of the variance
+in held-out prices, with a typical error of about $67,000.
 
-### Key Findings
-- Area is the strongest predictor of house price (correlation: 0.78)
-- Location significantly affects price
-- Engineered features improve model performance
-- Random Forest outperforms other models
-- Model generalizes well (cross-validation score: 0.94±0.02)
+### Correction
 
-## 💡 Conclusion
+Earlier versions of this README reported R² 0.95+ for a random forest. Those figures are
+withdrawn. The notebook used `Price_per_SqFt` (price ÷ area) as an input feature, which gives
+the model the answer, and the app could not supply it at prediction time. Without it, the best
+R² is about 0.87.
 
-The House Price Prediction System successfully demonstrates a complete end-to-end machine learning pipeline. The Random Forest Regressor achieved excellent performance with an R² score of 0.95+, indicating the model can explain 95% of the variance in house prices. The project includes comprehensive data preprocessing, feature engineering, model training, evaluation, and deployment through an interactive web application.
+### Key findings
+- Area is the strongest predictor of price.
+- Location and property type shift prices substantially.
+- On this dataset, a linear model matches or beats tree ensembles, which is consistent with how
+  `dataset/generate_dataset.py` builds prices (a near-linear formula plus noise).
+
+> **The data is synthetic.** Prices are generated from the features by a formula with random
+> noise, so these results show the workflow, not real-estate predictive skill.
+
+## 🧪 Tests
+
+```bash
+python train.py && pytest
+```
+
+Tests check that no input feature is derived from the price, that held-out R² is sensible
+(and not suspiciously high), that predictions respond to area, that missing values are handled,
+and that the Streamlit app predicts without errors. CI runs them on every push.
 
 ## 🔮 Future Scope
 
