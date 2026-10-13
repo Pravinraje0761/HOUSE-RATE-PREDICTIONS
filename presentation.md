@@ -1,3 +1,5 @@
+> **Correction (2026):** the accuracy figures in this document (R² 0.95+) came from a model that used a price-derived input feature, and are withdrawn. Current measured results are in the [README](README.md#-results) (best R² about 0.87).
+
 # House Price Prediction System - Presentation
 
 ## Slide 1: Title Slide

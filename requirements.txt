@@ -23,3 +23,4 @@ ipykernel
 
 # Additional utilities
 openpyxl
+pytest

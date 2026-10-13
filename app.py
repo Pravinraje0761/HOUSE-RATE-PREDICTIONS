@@ -54,19 +54,27 @@ st.markdown("""
     </p>
 """, unsafe_allow_html=True)
 
-# Load the model and scaler
+# Load the trained pipeline (created by `python train.py`)
+import json
+from pathlib import Path
+
+from train import FEATURES, build_input_frame
+
+MODEL_DIR = Path(__file__).resolve().parent / "models"
+
+
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load('models/house_price_model.pkl')
-        scaler = joblib.load('models/scaler.pkl')
-        feature_names = joblib.load('models/feature_names.pkl')
-        return model, scaler, feature_names
-    except:
-        st.error("Model files not found. Please run the notebook first to train and save the model.")
-        return None, None, None
+        pipeline = joblib.load(MODEL_DIR / "house_price_pipeline.joblib")
+        metrics = json.loads((MODEL_DIR / "metrics.json").read_text())
+        return pipeline, metrics
+    except FileNotFoundError:
+        st.error("Model not found. Run `python train.py` first to train and save it.")
+        return None, None
 
-model, scaler, feature_names = load_model()
+
+model, metrics = load_model()
 
 # Sidebar for inputs
 st.sidebar.header("📝 House Features")
@@ -89,73 +97,19 @@ crime_rate = st.sidebar.selectbox("Crime Rate", ["Low", "Medium", "High"])
 property_type = st.sidebar.selectbox("Property Type", ["Apartment", "House", "Villa", "Condo", "Townhouse"])
 
 # Prediction function
-def predict_price(area, location, city, bedrooms, bathrooms, floors, parking, age, 
-                 furnishing_status, distance_city, schools, hospitals, crime_rate, property_type):
+def predict_price(area, location, city, bedrooms, bathrooms, floors, parking, age,
+                  furnishing_status, distance_city, schools, hospitals, crime_rate, property_type):
     if model is None:
         return None
-    
-    # Create input dictionary
-    input_data = {
-        'Area': [area],
-        'Number_of_Bedrooms': [bedrooms],
-        'Number_of_Bathrooms': [bathrooms],
-        'Number_of_Floors': [floors],
-        'Parking': [parking],
-        'Age_of_House': [age],
-        'Distance_to_City_Center': [distance_city],
-        'Nearby_Schools': [schools],
-        'Nearby_Hospitals': [hospitals],
-        'Furnishing_Status_Encoded': [0],
-        'Crime_Rate_Encoded': [0],
+    row = {
+        "Area": area, "Location": location, "City": city,
+        "Number_of_Bedrooms": bedrooms, "Number_of_Bathrooms": bathrooms,
+        "Number_of_Floors": floors, "Parking": parking, "Age_of_House": age,
+        "Furnishing_Status": furnishing_status, "Distance_to_City_Center": distance_city,
+        "Nearby_Schools": schools, "Nearby_Hospitals": hospitals,
+        "Crime_Rate": crime_rate, "Property_Type": property_type,
     }
-    
-    # Encode categorical variables
-    furnishing_map = {'Furnished': 2, 'Semi-Furnished': 1, 'Unfurnished': 0}
-    crime_map = {'Low': 0, 'Medium': 1, 'High': 2}
-    
-    input_data['Furnishing_Status_Encoded'] = [furnishing_map.get(furnishing_status, 1)]
-    input_data['Crime_Rate_Encoded'] = [crime_map.get(crime_rate, 1)]
-    
-    # Add one-hot encoded columns
-    for col in feature_names:
-        if col.startswith('Location_'):
-            input_data[col] = [1 if col == f'Location_{location}' else 0]
-        elif col.startswith('City_'):
-            input_data[col] = [1 if col == f'City_{city}' else 0]
-        elif col.startswith('Property_Type_'):
-            input_data[col] = [1 if col == f'Property_Type_{property_type}' else 0]
-        elif col not in input_data:
-            input_data[col] = [0]
-    
-    # Add engineered features
-    input_data['Price_per_SqFt'] = [0]
-    input_data['Total_Rooms'] = [bedrooms + bathrooms]
-    input_data['Luxury_Score'] = [50]
-    input_data['Accessibility_Score'] = [50]
-    input_data['House_Age_Category_Encoded'] = [1]
-    input_data['Location_Popularity_Score'] = [50]
-    
-    # Create DataFrame
-    input_df = pd.DataFrame(input_data)
-    
-    # Ensure all columns are present
-    for col in feature_names:
-        if col not in input_df.columns:
-            input_df[col] = 0
-    
-    input_df = input_df[feature_names]
-    
-    # Scale numerical features
-    numerical_cols = ['Area', 'Number_of_Bedrooms', 'Number_of_Bathrooms', 
-                      'Number_of_Floors', 'Parking', 'Age_of_House',
-                      'Distance_to_City_Center', 'Nearby_Schools', 'Nearby_Hospitals']
-    
-    input_df[numerical_cols] = scaler.transform(input_df[numerical_cols])
-    
-    # Make prediction
-    prediction = model.predict(input_df)
-    
-    return prediction[0]
+    return float(model.predict(build_input_frame(row))[0])
 
 # Main content area
 col1, col2 = st.columns([2, 1])
@@ -195,9 +149,9 @@ with col2:
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # Price range estimate
-                price_range = predicted_price * 0.1
-                st.info(f"Price Range: ${predicted_price - price_range:,.0f} - ${predicted_price + price_range:,.0f}")
+                # Typical error on held-out houses
+                mae = metrics["models"][metrics["selected_model"]]["test_mae"]
+                st.info(f"Typical error on unseen houses: ±${mae:,.0f} (mean absolute error)")
 
 # Additional features section
 st.markdown("---")
@@ -211,8 +165,14 @@ if uploaded_file is not None:
         st.write("Uploaded Data:")
         st.dataframe(bulk_df.head())
         
-        if st.button("Predict Bulk Prices"):
-            st.info("Bulk prediction feature requires custom preprocessing. Please use the notebook for bulk predictions.")
+        missing = [c for c in FEATURES if c not in bulk_df.columns]
+        if missing:
+            st.warning(f"Missing columns: {', '.join(missing)}")
+        elif model is not None and st.button("Predict Bulk Prices"):
+            bulk_df["Predicted_Price"] = model.predict(build_input_frame(bulk_df.to_dict("records")))
+            st.dataframe(bulk_df)
+            st.download_button("Download predictions", bulk_df.to_csv(index=False),
+                               "predictions.csv", "text/csv")
     except Exception as e:
         st.error(f"Error reading file: {e}")
 
@@ -221,32 +181,30 @@ st.markdown("---")
 st.subheader("🔍 Feature Importance")
 
 if model is not None:
-    try:
-        importance = model.feature_importances_
-        importance_df = pd.DataFrame({
-            'Feature': feature_names,
-            'Importance': importance
-        }).sort_values('Importance', ascending=False).head(10)
-        
-        fig = px.bar(importance_df, x='Importance', y='Feature', 
-                    title='Top 10 Most Important Features',
-                    orientation='h')
-        fig.update_layout(yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig, use_container_width=True)
-    except:
-        st.warning("Feature importance not available")
+    est = model.named_steps["model"]
+    names = model.named_steps["prep"].get_feature_names_out()
+    if hasattr(est, "feature_importances_"):
+        weights, label = est.feature_importances_, "Importance"
+    else:  # linear model: size of each (scaled / one-hot) coefficient
+        weights, label = np.abs(est.coef_), "|Coefficient|"
+    importance_df = (pd.DataFrame({"Feature": [n.split("__", 1)[-1] for n in names], label: weights})
+                     .sort_values(label, ascending=False).head(10))
+    fig = px.bar(importance_df, x=label, y="Feature", title="Top 10 Most Influential Features",
+                 orientation="h")
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    st.plotly_chart(fig, use_container_width=True)
 
 # About section
 st.markdown("---")
 st.subheader("ℹ️ About This Project")
 
-st.markdown("""
+st.markdown(f"""
     <div class='metric-card'>
         <p><strong>Project:</strong> House Price Prediction System</p>
         <p><strong>Objective:</strong> Predict house prices using Machine Learning</p>
-        <p><strong>Model:</strong> Random Forest Regressor</p>
-        <p><strong>Accuracy:</strong> R² Score ~0.95+</p>
-        <p><strong>Features:</strong> 25+ features including engineered features</p>
+        <p><strong>Model:</strong> {metrics["selected_model"] if metrics else "not trained"}</p>
+        <p><strong>Held-out R²:</strong> {metrics["models"][metrics["selected_model"]]["test_r2"] if metrics else "n/a"}</p>
+        <p><strong>Data:</strong> synthetic dataset (dataset/generate_dataset.py), 14 input features</p>
     </div>
 """, unsafe_allow_html=True)
 
